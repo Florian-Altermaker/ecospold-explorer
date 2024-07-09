@@ -149,7 +149,7 @@ class Extract extends Source
                         // Transform provider XML (ecospold) into object
                         if (file_exists($this->source['path_to_impact_datasets_repository'].'/'.$intermediateExchangeActivityLinkId.'_'.$intermediateExchangeId.'.spold')) {
 
-                            $provider = simplexml_load_file('D:/ecoinvent/src-3-9-1/cutoff_lcia/datasets'/*$this->source['path_to_impact_datasets_repository']*/.'/'.$intermediateExchangeActivityLinkId.'_'.$intermediateExchangeId.'.spold');
+                            $provider = simplexml_load_file($this->source['path_to_impact_datasets_repository'].'/'.$intermediateExchangeActivityLinkId.'_'.$intermediateExchangeId.'.spold');
 
                             // Define the main node of provider (could be activityDataset or childActivityDataset)
                             $providerMetaNode = $provider->activityDataset ?? $provider->childActivityDataset;
