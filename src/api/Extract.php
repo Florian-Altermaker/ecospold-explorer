@@ -106,6 +106,8 @@ class Extract extends Source
     private function scanFiles(array $extract): array
     {
 
+        $inputIntermediateExchangeKeywords = array_column($this->inputIntermediateExchangeKeywords, 'regex');
+
         foreach ($extract as $uuid => $activity) {
 
             $unset = true;
@@ -136,7 +138,7 @@ class Extract extends Source
                         $intermediateExchangeId = (string) $exchangeData->attributes()->intermediateExchangeId;
 
                         // Filter on intermediate exchange
-                        foreach ($this->inputIntermediateExchangeKeywords as $keyword) {
+                        foreach ($inputIntermediateExchangeKeywords as $keyword) {
                             if (preg_match("#{$keyword}#", $intermediateExchangeName)) {
                                 if ($this->outputIntermediateExchanges) {
                                     $extract[$uuid]["{$intermediateExchangeName} [{$intermediateExchangeUnit}]"] = $exchangeAmount;
@@ -226,18 +228,22 @@ class Extract extends Source
 
                         foreach ($this->outputImpactCategories as $outputImpactCategory) {
 
-                            $cf = $this->getCharacterizationFactor(
-                                $outputImpactCategory['method'],
-                                $outputImpactCategory['category'],
-                                $outputImpactCategory['indicator'],
-                                $elementaryFlowName,
-                                $elementaryFlowCompartment,
-                                $elementaryFlowSubcompartment
-                            );
+                            if ($outputImpactCategory['rule'] == 'detail') {
 
-                            if ($cf != 0) {
-                                $key = "{$outputImpactCategory['method']} | {$outputImpactCategory['category']} | {$outputImpactCategory['indicator']} - {$elementaryFlowName} ({$elementaryFlowCompartment} - {$elementaryFlowSubcompartment})";
-                                $extract[$uuid][$key] = $exchangeAmount * $cf;
+                                $cf = $this->getCharacterizationFactor(
+                                    $outputImpactCategory['method'],
+                                    $outputImpactCategory['category'],
+                                    $outputImpactCategory['indicator'],
+                                    $elementaryFlowName,
+                                    $elementaryFlowCompartment,
+                                    $elementaryFlowSubcompartment
+                                );
+
+                                if ($cf != 0) {
+                                    $key = "{$outputImpactCategory['method']} | {$outputImpactCategory['category']} | {$outputImpactCategory['indicator']} - {$elementaryFlowName} ({$elementaryFlowCompartment} - {$elementaryFlowSubcompartment})";
+                                    $extract[$uuid][$key] = $exchangeAmount * $cf;
+                                }
+
                             }
 
                         }
@@ -329,9 +335,15 @@ class Extract extends Source
     private function scanFilesLCIA(): array
     {
 
+        $inputActivityKeywords = array_column($this->inputActivityKeywords, 'regex');
+        $inputReferenceFlowKeywords = array_column($this->inputReferenceFlowKeywords, 'regex');
+
         $extract = [];
 
-        $activityLCIAFiles = array_diff(scandir($this->source['path_to_impact_datasets_repository']), ['.','..']);
+        // Check if activites list is stored in DB to speed up parsing
+        $activityLCIAFiles = $this->isActivitiesListStored() ?
+            $this->getActivities(array_column($this->inputActivityKeywords, 'like')) :
+            array_diff(scandir($this->source['path_to_impact_datasets_repository']), ['.','..']);
 
         foreach ($activityLCIAFiles as $file) {
 
@@ -345,7 +357,7 @@ class Extract extends Source
             $activityName = (string) $metaNode->activityDescription->activity->activityName ?? 'Unknown data';
 
             // Check if activity is searched
-            foreach ($this->inputActivityKeywords as $searchedName) {
+            foreach ($inputActivityKeywords as $searchedName) {
 
                 if (preg_match("#{$searchedName}#", $activityName)) {
 
@@ -401,7 +413,7 @@ class Extract extends Source
                     // Remove extracted data if reference flow is not searched
                     if (!empty($this->inputReferenceFlowKeywords)) {
 
-                        foreach ($this->inputReferenceFlowKeywords as $searchedReferenceFlow) {
+                        foreach ($inputReferenceFlowKeywords as $searchedReferenceFlow) {
 
                             if (!preg_match("#{$searchedReferenceFlow}#", $extract[$uuid]["Reference flow"])) {
 
@@ -665,13 +677,18 @@ class Extract extends Source
         $i = 1;
         while ($i > 0) {
             if (isset($data["$key-rule-$i"], $data["$key-value-$i"])) {
-                $keyword = preg_quote($data["$key-value-$i"], '#');
                 switch($data["$key-rule-$i"]) {
                     case "begin":
-                        $keyword = "^".$keyword;
+                        $keyword['regex'] = "^".preg_quote($data["$key-value-$i"], '#');
+                        $keyword['like'] = $data["$key-value-$i"]."%";
                         break;
                     case "end":
-                        $keyword = $keyword."$";
+                        $keyword['regex'] = preg_quote($data["$key-value-$i"], '#')."$";
+                        $keyword['like'] = "%".$data["$key-value-$i"];
+                        break;
+                    default:
+                        $keyword['regex'] = preg_quote($data["$key-value-$i"], '#');
+                        $keyword['like'] = $data["$key-value-$i"];
                 }
                 $keywords[] = $keyword;
                 $i++;

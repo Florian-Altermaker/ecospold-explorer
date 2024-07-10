@@ -72,9 +72,17 @@ This app provides ecospold extraction features, from **.spold** sources to **.xs
     PRIMARY KEY (`id`),
     UNIQUE KEY `source_name` (`name`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Available sources of EcoSpold datasets';
+
+    DROP TABLE IF EXISTS `activity`;
+    CREATE TABLE IF NOT EXISTS `activity` (
+    `uuid` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Double UUID used to name ecospold files, without ".spold" extension',
+    `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Activity name',
+    `source_id` int(11) NOT NULL,
+    UNIQUE KEY `activity_uuid` (`uuid`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Optional list of activities to speed up parsing';
     ```
 
-5. **Declare a first data source**
+5. **Declare a first data source and fill the database**
 
     First, you need a valid license to use EcoSpold data source. Four path sources must be declared for a source (table `source` in database):
     - `path_to_unit_datasets_repository`: the directory where the "Unit" files are (the main files with intermediate exchanges and elementary flows) - E.g. __"C:ecopspold/path/to/somewhere/ei10/cutoff"__
@@ -85,6 +93,8 @@ This app provides ecospold extraction features, from **.spold** sources to **.xs
     Then, to allow calculation (if you need to extract impacts contributions), the table `characterization_factor` has to be filled with editor's LCIA implementation: you can find it on the editor's platform if he published it (if not, the calculation feature may not be available).
 
     If you are using ecoinvent, you can download all the source on the [Ecoquery](https://ecoquery.ecoinvent.org) platform, under "Files". LCIA Implementation is available in the supporting documents of the selected version.
+
+    Eventually, it is recommended to fill the table `activity` with the source activities list (uuid and name of each activity). This step is optional but improve the extraction speed about 99% (so do not hesitate). Lists of activities can also be dowloaded from Ecoquery website.
 
 6. **Let's open the app!**
 

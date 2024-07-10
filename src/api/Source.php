@@ -71,6 +71,37 @@ class Source
         return $cf['characterization_factor'] ?? 0;
     }
 
+    /**
+     * Returns list of activies based on keywords
+     */
+    protected function getActivities(array $keywords)
+    {
+
+        $clauses = [];
+        $arguments = [$this->source['id']];
+
+        foreach ($keywords as $keyword) {
+            $clauses[] = "`name` LIKE ?";
+            $arguments[] = $keyword;
+        }
+
+        $clauses = !empty($clauses) ? " AND ".implode(' OR ', $clauses) : '';
+
+        return Database::request(
+            "SELECT CONCAT(`uuid`, '.spold') AS `file` FROM `activity` WHERE `source_id` = ?$clauses",
+            $arguments
+        )::fetchAll(\PDO::FETCH_COLUMN);
+
+    }
+
+    /**
+     * Checks if activities list is available
+     */
+    protected function isActivitiesListStored()
+    {
+        return Database::request("SELECT DISTINCT `source_id` FROM `activity` WHERE `source_id` = ?", [$this->source['id']])::fetchAll();
+    }
+
     protected function setSource(array $source): void
     {
         $this->source = $source;
