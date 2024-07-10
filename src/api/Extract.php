@@ -146,38 +146,44 @@ class Extract extends Source
                             }
                         }
 
-                        // Transform provider XML (ecospold) into object
-                        if (file_exists($this->source['path_to_impact_datasets_repository'].'/'.$intermediateExchangeActivityLinkId.'_'.$intermediateExchangeId.'.spold')) {
+                        if (!isset($memory[$intermediateExchangeActivityLinkId])) {
 
-                            $provider = simplexml_load_file($this->source['path_to_impact_datasets_repository'].'/'.$intermediateExchangeActivityLinkId.'_'.$intermediateExchangeId.'.spold');
+                            // Transform provider XML (ecospold) into object
+                            if (file_exists($this->source['path_to_impact_datasets_repository'].'/'.$intermediateExchangeActivityLinkId.'_'.$intermediateExchangeId.'.spold')) {
 
-                            // Define the main node of provider (could be activityDataset or childActivityDataset)
-                            $providerMetaNode = $provider->activityDataset ?? $provider->childActivityDataset;
+                                $provider = simplexml_load_file($this->source['path_to_impact_datasets_repository'].'/'.$intermediateExchangeActivityLinkId.'_'.$intermediateExchangeId.'.spold');
 
-                            // Get provider name
-                            $providerName = (string) $providerMetaNode->activityDescription->activity->activityName ?? 'Unknown data';
+                                // Define the main node of provider (could be activityDataset or childActivityDataset)
+                                $providerMetaNode = $provider->activityDataset ?? $provider->childActivityDataset;
 
-                            // Get provider flows
-                            $providerExchanges = $providerMetaNode->flowData->children();
+                                // Get provider name
+                                $providerName = (string) $providerMetaNode->activityDescription->activity->activityName ?? 'Unknown data';
 
-                            foreach($providerExchanges as $providerExchangeData) {
+                                // Get provider flows
+                                $providerExchanges = $providerMetaNode->flowData->children();
 
-                                if ($providerExchangeData->getName() == 'impactIndicator') {
+                                foreach($providerExchanges as $providerExchangeData) {
 
-                                    $currentMethod = (string) $providerExchangeData->impactMethodName;
-                                    $currentCategory = (string) $providerExchangeData->impactCategoryName;
-                                    $currentName = (string) $providerExchangeData->name;
+                                    if ($providerExchangeData->getName() == 'impactIndicator') {
 
-                                    foreach ($this->outputImpactCategories as $outputImpactCategory) {
+                                        $currentMethod = (string) $providerExchangeData->impactMethodName;
+                                        $currentCategory = (string) $providerExchangeData->impactCategoryName;
+                                        $currentName = (string) $providerExchangeData->name;
 
-                                        if ($outputImpactCategory['method'] == $currentMethod && $outputImpactCategory['category'] == $currentCategory && $outputImpactCategory['indicator'] == $currentName && $outputImpactCategory['rule'] == 'detail') {
+                                        foreach ($this->outputImpactCategories as $outputImpactCategory) {
 
-                                            // Add impact contribution to extracted file
-                                            $cf = (float) $providerExchangeData->attributes()->amount;
-                                            $key = "{$currentMethod} | {$currentCategory} | {$currentName} - {$providerName}";
-                                            $extract[$uuid][$key] = $exchangeAmount * $cf;
+                                            if ($outputImpactCategory['method'] == $currentMethod && $outputImpactCategory['category'] == $currentCategory && $outputImpactCategory['indicator'] == $currentName && $outputImpactCategory['rule'] == 'detail') {
 
-                                            break;
+                                                // Add impact contribution to extracted file
+                                                $cf = (float) $providerExchangeData->attributes()->amount;
+                                                $memory[$intermediateExchangeActivityLinkId]["name"] = $providerName;
+                                                $memory[$intermediateExchangeActivityLinkId][$outputImpactCategory['method'].'-'.$outputImpactCategory['category'].'-'.$outputImpactCategory['indicator']] = $cf;
+                                                $key = "{$currentMethod} | {$currentCategory} | {$currentName} - {$providerName}";
+                                                $extract[$uuid][$key] = $exchangeAmount * $cf;
+
+                                                break;
+
+                                            }
 
                                         }
 
@@ -185,9 +191,26 @@ class Extract extends Source
 
                                 }
 
+                                unset($provider);
+
                             }
 
-                            unset($provider);
+                        } else {
+
+                            foreach ($this->outputImpactCategories as $outputImpactCategory) {
+
+                                if ($outputImpactCategory['rule'] == 'detail') {
+
+                                    // Add impact contribution to extracted file
+                                    $cf = $memory[$intermediateExchangeActivityLinkId][$outputImpactCategory['method'].'-'.$outputImpactCategory['category'].'-'.$outputImpactCategory['indicator']];
+                                    $key = "{$outputImpactCategory['method']} | {$outputImpactCategory['category']} | {$outputImpactCategory['indicator']} - {$memory[$intermediateExchangeActivityLinkId]['name']}";
+                                    $extract[$uuid][$key] = $exchangeAmount * $cf;
+
+                                    break;
+
+                                }
+
+                            }
 
                         }
 
@@ -477,25 +500,40 @@ class Extract extends Source
      */
     protected function convertArrayToCSV(array $array, string $fileName): string
     {
-
         if (count($array) == 0) {
             Response::send(404, "No data matching the request parameters");
         }
 
-        file_put_contents($fileName, '');
-
-        ob_start();
-        $df = fopen($fileName, 'w');
-        fprintf($df, chr(0xEF).chr(0xBB).chr(0xBF));
-        fputcsv($df, array_keys(reset($array)));
-
+        // Collect all unique keys
+        $header = [];
         foreach ($array as $row) {
-            fputcsv($df, $row);
+            $header = array_unique(array_merge($header, array_keys($row)));
         }
 
-        fclose($df);
-        return ob_get_clean();
+        // Open file for writing
+        file_put_contents($fileName, '');
+        $df = fopen($fileName, 'w');
 
+        // Write UTF-8 BOM to the file
+        fprintf($df, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        // Write the header to the CSV
+        fputcsv($df, $header);
+
+        // Write each row to the CSV, ensuring all keys are present
+        foreach ($array as $row) {
+            $line = [];
+            foreach ($header as $key) {
+                $line[] = isset($row[$key]) ? $row[$key] : '';
+            }
+            fputcsv($df, $line);
+        }
+
+        // Close the file
+        fclose($df);
+
+        // Return the file content
+        return file_get_contents($fileName);
     }
 
     /**
